@@ -6,4 +6,7 @@ if (-not (Test-Path .venv)) {
 . .\.venv\Scripts\Activate.ps1
 pip install -q -r requirements.txt
 $port = if ($env:PORT) { $env:PORT } else { "8000" }
+Write-Host ""
+Write-Host "Open http://localhost:$port in your browser" -ForegroundColor Cyan
+Write-Host ""
 python -m uvicorn server.main:app --host 0.0.0.0 --port $port

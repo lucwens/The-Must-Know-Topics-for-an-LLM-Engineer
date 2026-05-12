@@ -7,4 +7,7 @@ if not exist .venv (
 call .venv\Scripts\activate.bat
 pip install -q -r requirements.txt
 if "%PORT%"=="" set PORT=8000
+echo.
+echo Open http://localhost:%PORT% in your browser
+echo.
 python -m uvicorn server.main:app --host 0.0.0.0 --port %PORT%

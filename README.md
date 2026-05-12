@@ -58,9 +58,14 @@ pip install -r requirements.txt
 python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-Then open <http://localhost:8000>. On first start the server downloads
-DistilGPT-2 from the HuggingFace Hub (~330 MB) and then serves all
-subsequent requests from memory.
+Then open **<http://localhost:8000>** (or `http://127.0.0.1:8000`) in your
+browser. Don't browse to `http://0.0.0.0:8000` — `0.0.0.0` is a valid *bind*
+address (it tells the server to listen on every network interface) but it
+isn't a valid *destination* address in a browser, especially on Windows
+where it returns `ERR_ADDRESS_INVALID`.
+
+On first start the server downloads DistilGPT-2 from the HuggingFace Hub
+(~330 MB) and then serves all subsequent requests from memory.
 
 Convenience wrappers are included:
 
