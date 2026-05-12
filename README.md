@@ -28,9 +28,32 @@ tab rather than mocked up.
 
 Python 3.10+ recommended.
 
+### Linux / macOS
+
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+```
+
+### Windows (PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+```
+
+> If PowerShell blocks the activation script, run once:
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+### Windows (cmd.exe)
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
@@ -39,10 +62,21 @@ Then open <http://localhost:8000>. On first start the server downloads
 DistilGPT-2 from the HuggingFace Hub (~330 MB) and then serves all
 subsequent requests from memory.
 
-A convenience wrapper is included:
+Convenience wrappers are included:
 
 ```bash
+# Linux / macOS
 ./run.sh
+```
+
+```powershell
+# Windows (PowerShell)
+.\run.ps1
+```
+
+```bat
+:: Windows (cmd.exe)
+run.bat
 ```
 
 ## File layout
