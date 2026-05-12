@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LLM Principles Explorer</title>
+<link rel="stylesheet" href="/static/style.css" />
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">LLM</span>
+    <div>
+      <h1>Principles Explorer</h1>
+      <p class="sub">Real DistilGPT-2 forward passes — no synthetic numbers anywhere in this app.</p>
+    </div>
+  </div>
+  <div class="model-info" id="modelInfo">Loading model…</div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="tokenize">1. Tokenization</button>
+  <button class="tab" data-tab="embed">2. Embeddings</button>
+  <button class="tab" data-tab="pos">3. Positional Encoding</button>
+  <button class="tab" data-tab="attn">4. Attention (Q·K·V)</button>
+  <button class="tab" data-tab="decode">5. Decoding Strategies</button>
+  <button class="tab" data-tab="arch">6. Architectures</button>
+</nav>
+
+<main>
+  <!-- ============================== OVERVIEW ============================ -->
+  <section class="panel active" data-panel="overview">
+    <h2>How does a stream of text turn into a generated answer?</h2>
+    <p class="lead">
+      This explorer walks through the pipeline described in
+      <em>The Must-Know Topics for an LLM Engineer</em>. Every demo runs a real
+      forward pass on DistilGPT-2 — you'll see actual token IDs, actual embedding
+      vectors, the model's own Q, K, V projections, and the live logits that
+      decoding strategies sample from.
+    </p>
+    <div class="flow">
+      <div class="flow-step" data-jump="tokenize"><span>1</span><h3>Tokenize</h3><p>Split text into BPE subwords + IDs.</p></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" data-jump="embed"><span>2</span><h3>Embed</h3><p>Look up dense vectors per token.</p></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" data-jump="pos"><span>3</span><h3>Add position</h3><p>Inject order via sinusoids / RoPE.</p></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" data-jump="attn"><span>4</span><h3>Attention</h3><p>Compute Q·Kᵀ, soft-max, weight V.</p></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" data-jump="decode"><span>5</span><h3>Decode</h3><p>Sample the next token from logits.</p></div>
+    </div>
+    <p class="hint">Click any stage to jump straight to it, or use the tabs above.</p>
+  </section>
+
+  <!-- ============================ TOKENIZATION ========================== -->
+  <section class="panel" data-panel="tokenize">
+    <h2>1 · Tokenization (Byte-Pair Encoding)</h2>
+    <p>
+      DistilGPT-2 uses the GPT-2 BPE vocabulary (50,257 tokens). Common words become
+      a single token; rare words get split into subword pieces. Leading spaces are
+      <em>part of the token</em>, which is why the same word can have two IDs.
+    </p>
+    <div class="controls">
+      <input id="tokInput" type="text" value="Tokenization splits unknown words into pieces." />
+      <button id="tokGo" class="primary">Tokenize</button>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>Tokens</h3>
+        <div id="tokOutput" class="token-stream"></div>
+      </div>
+      <div class="card narrow">
+        <h3>Stats</h3>
+        <div id="tokStats" class="stats"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ EMBEDDINGS ============================ -->
+  <section class="panel" data-panel="embed">
+    <h2>2 · Embeddings</h2>
+    <p>
+      Each token id indexes into a learned matrix of shape
+      <code>(vocab_size, 768)</code>. Tokens with related meanings tend to land near
+      each other in that 768-dim space. We can see this by computing cosine
+      similarities and by projecting the vectors down to 2-D with PCA.
+    </p>
+    <div class="controls">
+      <input id="embInput" type="text" value="king, queen, man, woman, banana, apple, computer, keyboard" />
+      <button id="embGo" class="primary">Embed</button>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>2-D PCA projection</h3>
+        <div id="embProj" class="plot tall"></div>
+      </div>
+      <div class="card">
+        <h3>Cosine similarity</h3>
+        <div id="embSim" class="plot tall"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Token preview (first 8 dims of each vector)</h3>
+      <div id="embTable"></div>
+    </div>
+
+    <div class="card">
+      <h3>Try a "king − man + woman ≈ ?" analogy</h3>
+      <p class="hint">
+        word2vec famously gets <code>king − man + woman ≈ queen</code>. GPT-2's input
+        embeddings are different (they're a piece of a larger contextual model), so
+        the result is honest, not curated.
+      </p>
+      <div class="controls">
+        <input id="anA" value="king" style="width:90px" />
+        <span>−</span>
+        <input id="anB" value="man" style="width:90px" />
+        <span>+</span>
+        <input id="anC" value="woman" style="width:90px" />
+        <span>≈ ?</span>
+        <input id="anCands" value="queen, princess, prince, woman, man" style="flex:1" />
+        <button id="anGo" class="primary">Compute</button>
+      </div>
+      <div id="anOut"></div>
+    </div>
+  </section>
+
+  <!-- ========================= POSITIONAL ENCODING ====================== -->
+  <section class="panel" data-panel="pos">
+    <h2>3 · Positional Encoding</h2>
+    <p>
+      Attention is permutation-invariant on its own, so we have to inject position.
+      The original Transformer paper used a fixed pattern: for every position
+      <code>pos</code> and dimension <code>i</code>, set
+      <code>PE(pos, 2i) = sin(pos / 10000^(2i/d))</code> and
+      <code>PE(pos, 2i+1) = cos(pos / 10000^(2i/d))</code>. Wiggle the sliders to
+      see how the bands stretch and compress.
+    </p>
+    <div class="controls">
+      <label>seq_len <input id="posLen" type="number" min="2" max="128" value="32" /></label>
+      <label>d_model <input id="posD" type="number" min="4" max="256" value="64" /></label>
+      <button id="posGo" class="primary">Compute</button>
+    </div>
+    <div class="row">
+      <div class="card">
+        <h3>Heatmap (positions × dimensions)</h3>
+        <div id="posHeat" class="plot tall"></div>
+      </div>
+      <div class="card">
+        <h3>Per-dimension waves</h3>
+        <div id="posLines" class="plot tall"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>RoPE — rotary positional embeddings</h3>
+      <p>
+        RoPE doesn't add anything to embeddings — it <em>rotates</em> consecutive
+        2-D slices of each Q / K vector by an angle that depends on position.
+        Enter any even-dimensional vector and watch each slice rotate as the
+        position increases.
+      </p>
+      <div class="controls">
+        <input id="ropeVec" value="1, 0, 1, 0" style="flex:1" />
+        <label>max position <input id="ropeMax" type="number" min="1" max="32" value="8" /></label>
+        <button id="ropeGo" class="primary">Rotate</button>
+      </div>
+      <div id="ropePlot" class="plot tall"></div>
+    </div>
+  </section>
+
+  <!-- ============================ ATTENTION ============================= -->
+  <section class="panel" data-panel="attn">
+    <h2>4 · The Attention Mechanism</h2>
+    <p>
+      This is the one the article highlights: every token is projected into a
+      <strong>query</strong>, a <strong>key</strong>, and a <strong>value</strong>
+      vector. The model decides how much one token attends to another by comparing
+      its query to that token's key. Enter any short sentence — every number you see
+      below comes from a real forward pass through DistilGPT-2.
+    </p>
+    <div class="controls">
+      <input id="attnInput" type="text" value="The cat sat on the mat because it was tired." />
+      <label>Layer <select id="attnLayer"></select></label>
+      <label>Head <select id="attnHead"></select></label>
+      <button id="attnGo" class="primary">Run forward pass</button>
+    </div>
+
+    <ol class="attn-steps" id="attnSteps">
+      <li class="step" data-step="1">
+        <h3>Step 1 — tokenize the sentence</h3>
+        <div class="token-stream" id="attnTokens"></div>
+      </li>
+      <li class="step" data-step="2">
+        <h3>Step 2 — project each token into Q, K, V (head-specific)</h3>
+        <p class="hint">
+          Three linear projections turn the 768-dim hidden state into three 64-dim
+          vectors per head. Click a token to inspect its Q / K / V.
+        </p>
+        <div class="qkv-pickrow" id="attnTokenPicker"></div>
+        <div class="qkv-grid">
+          <div class="qkv-card q"><h4>Q (query)</h4><div id="qkvQ" class="vec-mini"></div></div>
+          <div class="qkv-card k"><h4>K (key)</h4><div id="qkvK" class="vec-mini"></div></div>
+          <div class="qkv-card v"><h4>V (value)</h4><div id="qkvV" class="vec-mini"></div></div>
+        </div>
+      </li>
+      <li class="step" data-step="3">
+        <h3>Step 3 — score = Q·Kᵀ / √d_head</h3>
+        <p class="hint">
+          Each row is a query token; each column a key token. Bigger = stronger raw
+          compatibility.
+        </p>
+        <div id="attnScores" class="plot tall"></div>
+      </li>
+      <li class="step" data-step="4">
+        <h3>Step 4 — apply the causal mask &amp; softmax</h3>
+        <p class="hint">
+          Because DistilGPT-2 is decoder-only, future positions are masked to −∞
+          before softmax — that's why the upper triangle is dark.
+        </p>
+        <div id="attnWeights" class="plot tall"></div>
+      </li>
+      <li class="step" data-step="5">
+        <h3>Step 5 — output = attention · V</h3>
+        <p class="hint">
+          Each token's new representation is a weighted sum of the value vectors,
+          with the attention row above as the weights.
+        </p>
+        <div id="attnOutput" class="plot tall"></div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ========================== DECODING STRATEGIES ===================== -->
+  <section class="panel" data-panel="decode">
+    <h2>5 · Decoding Strategies</h2>
+    <p>
+      Once the model has produced logits for the next token, the decoder chooses
+      one. Temperature reshapes the distribution; top-k truncates to a fixed
+      number of candidates; top-p (nucleus) truncates to the smallest set whose
+      cumulative probability passes <code>p</code>.
+    </p>
+    <div class="controls">
+      <input id="genPrompt" type="text" value="Once upon a time, in a faraway land," />
+      <label>Temperature <input id="genTemp" type="range" min="0.1" max="2.5" step="0.05" value="1.0" /><span id="genTempVal">1.00</span></label>
+      <label>Top-k <input id="genTopK" type="number" min="0" max="200" value="40" /></label>
+      <label>Top-p <input id="genTopP" type="range" min="0.05" max="1.0" step="0.05" value="0.9" /><span id="genTopPVal">0.90</span></label>
+      <label>Seed <input id="genSeed" type="number" min="0" max="999999" value="0" /></label>
+      <button id="genGo" class="primary">Compute next-token distribution</button>
+    </div>
+    <div class="card">
+      <h3>Top candidates (after temperature)</h3>
+      <div id="genDist" class="plot tall"></div>
+    </div>
+    <div class="card">
+      <h3>What each strategy would pick</h3>
+      <div id="genPicks" class="pick-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>Watch a sequence unfold</h3>
+      <p class="hint">
+        Step-by-step autoregressive generation using the current settings. Each
+        chip is one token; the percentage is the probability the model assigned
+        to it under the active temperature.
+      </p>
+      <div class="controls">
+        <label>Strategy <select id="seqStrategy">
+          <option value="greedy">greedy</option>
+          <option value="top_k">top-k</option>
+          <option value="top_p" selected>top-p</option>
+          <option value="sample">pure sample</option>
+        </select></label>
+        <label>Max new tokens <input id="seqMax" type="number" min="1" max="60" value="20" /></label>
+        <button id="seqGo" class="primary">Generate</button>
+      </div>
+      <div id="seqOutput" class="seq-output"></div>
+    </div>
+  </section>
+
+  <!-- =========================== ARCHITECTURES ========================== -->
+  <section class="panel" data-panel="arch">
+    <h2>6 · Architecture Families</h2>
+    <p>
+      The same attention building block is wired up differently depending on the
+      task. The diagram below is a real DAG — each node corresponds to a piece of
+      the transformer stack described in the article.
+    </p>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>Encoder-only</h3>
+        <p>BERT-style. Every token sees every other token (bidirectional). Trained with masked language modeling. Strong for classification &amp; retrieval.</p>
+        <pre class="arch-svg">
+[tok₁ tok₂ tok₃ tok₄]
+        ↓
+   bidirectional
+      attention
+        ↓
+   contextual reps
+        </pre>
+      </div>
+      <div class="arch-card">
+        <h3>Decoder-only (this app)</h3>
+        <p>GPT-style. Each token attends only to past tokens (causal mask). Trained to predict the next token. Strong for generation.</p>
+        <pre class="arch-svg">
+prompt → [tok₁ tok₂ tok₃ ?]
+              ↓
+        causal attention
+              ↓
+        next-token logits
+        </pre>
+      </div>
+      <div class="arch-card">
+        <h3>Encoder–Decoder</h3>
+        <p>T5 / BART. Encoder sees the full input; decoder generates autoregressively while pulling from the encoder via cross-attention.</p>
+        <pre class="arch-svg">
+input → encoder ─┐
+                 ▼
+       cross-attention
+                 ▲
+output ← decoder ┘
+        </pre>
+      </div>
+    </div>
+    <p class="hint">
+      The full article also covers training stages (pre-training → SFT → RLHF),
+      hallucination mitigation (RAG, abstention training), inference tricks
+      (KV-cache, FlashAttention, quantization, MoE), prompt engineering, and
+      evaluation. Those are conceptual and don't lend themselves to live
+      computation in a single small model, so they're documented in the README
+      rather than faked here.
+    </p>
+  </section>
+</main>
+
+<footer>
+  <p>Source PDF: <em>The Must-Know Topics for an LLM Engineer</em> — Aliaksei Mikhailiuk, Towards Data Science.</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
